@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lockout2</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+    }
+  </script>
+  <style>
+:root{
+  --bg:#0b1220;
+  --panel:#111827;
+  --ink:#e5e7eb;
+  --muted:#9ca3af;
+  --accent:#22d3ee;
+  --cell:#1f2430;
+  --goal:#0ea5e9;
+  --grid:#415064;
+  --red:#ef4444;
+  --green:#22c55e;
+  --yellow:#f59e0b;
+  --blue:#3b82f6;
+  --purple:#a855f7;
+  --orange:#fb923c;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;height:100%}
+
+body{
+  min-height:100svh;
+  padding-left:env(safe-area-inset-left);
+  padding-right:env(safe-area-inset-right);
+  overflow-y:auto;
+}
+@supports (height:100dvh){ body{ min-height:100dvh; } }
+
+.topbar{
+  position:sticky;top:0;z-index:10;
+  display:flex;gap:16px;align-items:center;justify-content:space-between;
+  padding:12px 16px;background:linear-gradient(180deg,var(--panel),transparent);
+  backdrop-filter:blur(6px);
+  flex-wrap:wrap;
+}
+.topbar h1{margin:0;font-size:1.2rem}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.controls button,.controls select{
+  background:#0f172a;color:var(--ink);border:1px solid #263149;border-radius:10px;
+  padding:8px 12px;cursor:pointer;font-size:0.875rem
+}
+.controls button:hover{border-color:var(--accent)}
+.controls button:disabled{opacity:0.5;cursor:not-allowed}
+
+main{max-width:900px;margin:16px auto;padding:0 16px;padding-bottom:calc(env(safe-area-inset-bottom)+16px)}
+.hud{display:flex;gap:20px;justify-content:center;align-items:center;margin:8px 0;color:var(--muted)}
+#status{color:var(--accent);min-height:1.5rem}
+
+.board{ touch-action: none; 
+  width:min(80vmin,560px);
+  aspect-ratio:1/1;
+  margin:16px auto;
+  display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);
+  gap:6px;padding:10px;border-radius:16px;
+  background:linear-gradient(180deg,#0f172a,#0b1220);
+  box-shadow:0 10px 30px rgba(0,0,0,.35),inset 0 0 0 1px #1f2937;
+  outline:none;touch-action:none;user-select:none;
+}
+.cell{
+  background:var(--cell);
+  border-radius:12px;
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 0 0 2px var(--grid);
+}
+.goalCell{box-shadow:inset 0 0 0 2px var(--goal),inset 0 0 0 6px rgba(14,165,233,.15)}
+
+.robot{
+  width:70%;height:70%;
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;letter-spacing:.5px;
+  text-shadow:0 1px 2px rgba(0,0,0,.4);
+  border:2px solid rgba(255,255,255,.25);
+  cursor:pointer;
+  transition:none;
+}
+.robot.red{background:var(--red)}
+.robot.orange{background:var(--orange);color:#111}
+.robot.green{background:var(--green)}
+.robot.yellow{background:var(--yellow);color:#111}
+.robot.blue{background:var(--blue)}
+.robot.purple{background:var(--purple)}
+.selected{outline:3px dashed var(--accent);outline-offset:4px}
+
+.moveArea{display:flex;justify-content:center;margin:16px 0}
+.dpad{
+  display:grid;
+  grid-template-columns:repeat(3,64px);
+  grid-template-rows:repeat(3,48px);
+  grid-template-areas:". up ." "left reset right" ". down .";
+  gap:8px;justify-content:center;align-items:center
+}
+.dir{width:100%;height:100%;background:#0f172a;color:var(--ink);border:1px solid #263149;border-radius:10px;font-size:1.2rem;cursor:pointer;font-weight:700}
+.dir.up{grid-area:up}.dir.down{grid-area:down}
+.dir.left{grid-area:left}.dir.right{grid-area:right}
+.dir:hover{border-color:var(--accent)}
+.dir:active{opacity:0.7}
+
+.resetBtn{grid-area:reset;width:100%;height:100%;font-weight:700;letter-spacing:.5px;background:#e5e7eb;color:#111;border-radius:10px;border:2px solid #9ca3af;cursor:pointer;font-size:0.875rem}
+.resetBtn:hover{background:#fff}
+.resetBtn:active{opacity:0.8}
+
+.solutionBox{
+  max-width:540px;margin:10px auto 0;background:rgba(255,255,255,.04);
+  border:1px solid #24314a;border-radius:12px;padding:10px 12px;color:var(--muted)
+}
+.solutionTitle{font-weight:600;color:var(--ink);margin-bottom:6px}
+.solutionList{margin:0;padding-left:22px}
+.solutionList li{margin:2px 0;font-size:0.875rem}
+.step{display:inline-flex;gap:6px;align-items:center}
+.pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:20px;height:20px;padding:0 6px;border-radius:999px;
+  color:#fff;font-weight:700;font-size:.8rem;border:1px solid rgba(255,255,255,.25)
+}
+.pill.red{background:var(--red)}
+.pill.orange{background:var(--orange);color:#111}
+.pill.green{background:var(--green)}
+.pill.yellow{background:var(--yellow);color:#111}
+.pill.blue{background:var(--blue)}
+.pill.purple{background:var(--purple)}
+.arrow{font-weight:700;filter:drop-shadow(0 1px 0 rgba(0,0,0,.3))}
+
+footer{display:flex;justify-content:center;margin:20px 0;color:var(--muted);font-size:0.75rem}
+
+@keyframes shrinkOut{
+  from{transform:scale(1);opacity:1}
+  to{transform:scale(0);opacity:0}
+}
+.robot.dragging{
+  opacity:0.7;
+  transform:scale(1.1);
+  z-index:100;
+}
+.robot.fadeOut{
+  animation: shrinkOut 2s ease forwards;
+  will-change: transform, opacity;
+}
+
+
+  
+/* --- Overrides: hide D-pad and pin footer --- */
+.dpad{ display:none !important; }
+
+footer{
+  position: fixed;
+  right: calc(env(safe-area-inset-right) + 12px);
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  margin: 0;
+  z-index: 1000;
+}
+
+/* iPhone/iOS -tunnistus */
+@supports (-webkit-touch-callout: none) {
+  /* Molemmat rivit keskelle */
+  .hud { display: flex; flex-direction: column; align-items: center; }
+  .hud .moves { text-align: center; width: 100%; }
+
+  /* Varaa tila statukselle, ettei ruudukko hypi kun teksti vaihtuu */
+  #status {
+    display: block;
+    min-height: 1.6em;   /* varaa korkeuden yhdelle riville */
+    margin-top: 4px;
+    text-align: center;
+  }
+
+  /* Piilota footer kokonaan iPhonella */
+  footer { display: none !important; }
+}
+
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Lockout2</h1>
+    <div class="controls">
+      <label>
+        <select id="difficulty">
+          <option value="beginner">Easy (3–5)</option>
+          <option value="intermediate">Medium (6–8)</option>
+          <option value="advanced">Hard (9–12)</option>
+          <option value="beginner2">Easy ×2 Robots (3–6)</option>
+          <option value="intermediate2">Medium ×2 Robots (7–9)</option>
+          <option value="advanced2">Hard ×2 Robots (10–13)</option>
+        </select>
+      </label>
+      <button id="showSolution">Solution</button>
+      <button id="reset">Reset</button>
+      <button id="newPuzzle">New Task</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="hud">
+      <div>Moves: <span id="moveCount">0</span></div>
+      <div id="status"></div>
+    </div>
+
+    <div class="board" id="board" tabindex="0"></div>
+
+    <section class="moveArea">
+      <div class="dpad">
+        <button class="dir up" data-dir="up">↑</button>
+        <button class="dir left" data-dir="left">←</button>
+        <button id="resetBtn2" class="resetBtn">RESET</button>
+        <button class="dir right" data-dir="right">→</button>
+        <button class="dir down" data-dir="down">↓</button>
+      </div>
+    </section>
+
+    <section class="solutionBox" id="solutionBox" hidden>
+      <div class="solutionTitle">Shortest solution</div>
+      <ol id="solutionList" class="solutionList"></ol>
+    </section>
+  </main>
+
+  <footer>
+    <small>v.3.0 © JR - Original idea Hiroshi Yamamoto</small>
+  </footer>
+
+  <script>
+const boardEl = document.getElementById('board');
+const moveCountEl = document.getElementById('moveCount');
+const statusEl = document.getElementById('status');
+const btnNew = document.getElementById('newPuzzle');
+const btnSolve = document.getElementById('showSolution');
+const btnReset = document.getElementById('reset');
+const btnResetBtn2 = document.getElementById('resetBtn2');
+const selDiff = document.getElementById('difficulty');
+const solutionBox = document.getElementById('solutionBox');
+const solutionList = document.getElementById('solutionList');
+
+const N = 5, CENTER = 12, TOTAL = 5, SENTINEL = 255;
+const STEP = { up:[-1,0], down:[1,0], left:[0,-1], right:[0,1] };
+const DIFF = {
+  beginner:[3,5], intermediate:[6,8], advanced:[9,12],
+  beginner2:[3,6], intermediate2:[7,9], advanced2:[10,13]
+};
+
+function idx(r,c){ return r*N + c; }
+function rc(i){ return [Math.floor(i/N), i%N]; }
+function clone(a){ return new Uint8Array(a); }
+function isSolved(){ return state.cleared >= state.reqRobots; }
+
+function paletteFor(value){
+  const two = value.endsWith('2');
+  if(two) return {
+    colors:['red','orange','green','blue','purple'],
+    names:['Red','Orange','Green','Blue','Purple'],
+    heroes:[0,1], heroLabels:{0:'X',1:'O'}, reqRobots:2
+  };
+  return {
+    colors:['red','yellow','blue','green','purple'],
+    names:['Red','Orange','Blue','Green','Purple'],
+    heroes:[0], heroLabels:{0:'X'}, reqRobots:1
+  };
+}
+
+let state = {
+  start:null, pos:null, selected:0, moves:0, solution:null, minLen:null,
+  colors:[], names:[], heroLabels:{}, heroes:[0], reqRobots:1, cleared:0, locked:false
+};
+
+function occupiedSet(pos){
+  const s = new Set();
+  for(let i=0;i<pos.length;i++) if(pos[i]!==SENTINEL) s.add(pos[i]);
+  return s;
+}
+
+function nearestBlocker(pos, from, dir){
+  const [r,c] = rc(from);
+  const [dr,dc] = STEP[dir];
+  const occ = occupiedSet(pos);
+  occ.delete(from);
+  let rr = r + dr, cc = c + dc;
+  while (rr >= 0 && rr < N && cc >= 0 && cc < N){
+    if (occ.has(idx(rr,cc))) return idx(rr,cc);
+    rr += dr; cc += dc;
+  }
+  return null;
+}
+
+function slide(pos, robotIdx, dir){
+  const cur = pos[robotIdx];
+  if (cur === SENTINEL) return SENTINEL;
+  const blk = nearestBlocker(pos, cur, dir);
+  if (blk == null) return cur;
+  const [dr,dc] = STEP[dir];
+  const [br,bc] = rc(blk);
+  return idx(br - dr, bc - dc);
+}
+
+function canonicalKey(pos, heroes, cleared){
+  if (heroes.length === 1){
+    const a = Array.from(pos).slice().sort((x,y)=>x-y);
+    return a.join(',') + '|' + cleared;
+  }
+  const h0 = pos[0], h1 = pos[1];
+  const rest = [pos[2],pos[3],pos[4]].sort((a,b)=>a-b);
+  return `${h0}|${h1}|${rest.join(',')}|${cleared}`;
+}
+
+function applyGoalRule(pos, heroes, cleared, reqRobots, robotIndex){
+  if(heroes.includes(robotIndex) && pos[robotIndex]===CENTER){
+    const np = new Uint8Array(pos);
+    np[robotIndex] = SENTINEL;
+    return {pos:np, cleared:cleared+1};
+  }
+  return {pos, cleared};
+}
+
+function nextStates(pos, heroes, cleared, reqRobots){
+  const out = [];
+  for(let r=0;r<pos.length;r++){
+    if(pos[r]===SENTINEL) continue;
+    for(const d of ['up','down','left','right']){
+      const to = slide(pos, r, d);
+      if(to!==pos[r] && to!==SENTINEL){
+        let np = clone(pos);
+        np[r]=to;
+        const ap = applyGoalRule(np, heroes, cleared, reqRobots, r);
+        out.push({pos:ap.pos, cleared:ap.cleared, move:{robot:r, dir:d}});
+      }
+    }
+  }
+  return out;
+}
+
+function solveBFS(startPos, heroes, reqRobots, maxNodes=800000){
+  const startKey = canonicalKey(startPos, heroes, 0);
+  const q = [{pos:startPos, cleared:0}];
+  const prev = new Map([[startKey, null]]);
+  let nodes=0;
+
+  while(q.length){
+    const cur = q.shift();
+    if(cur.cleared >= reqRobots){
+      const path = [];
+      let key = canonicalKey(cur.pos, heroes, cur.cleared);
+      while(true){
+        const p = prev.get(key);
+        if(!p) break;
+        path.push(p.move);
+        key = p.key;
+      }
+      path.reverse();
+      return {length:path.length, path};
+    }
+    if(++nodes>maxNodes) break;
+    for(const ns of nextStates(cur.pos, heroes, cur.cleared, reqRobots)){
+      const k = canonicalKey(ns.pos, heroes, ns.cleared);
+      if(prev.has(k)) continue;
+      prev.set(k, {key:canonicalKey(cur.pos, heroes, cur.cleared), move:ns.move});
+      q.push(ns);
+    }
+  }
+  return {length:null, path:null};
+}
+
+function randomLayout(){
+  const all = [];
+  for(let i=0;i<N*N;i++) if(i!==CENTER) all.push(i);
+  for(let i=all.length-1;i>0;i--){
+    const j=(Math.random()*(i+1))|0;
+    [all[i],all[j]]=[all[j],all[i]];
+  }
+  const p = new Uint8Array(TOTAL);
+  for(let i=0;i<TOTAL;i++) p[i]=all[i];
+  return p;
+}
+
+async function generatePuzzleFor(value){
+  const pal = paletteFor(value);
+  let [lo, hi] = DIFF[value] || DIFF.beginner;
+  if (pal.reqRobots===2 && hi>13) hi = 13;
+
+  statusEl.textContent = "Generating…";
+  const MAX_TRIES = 15000;
+
+  let best = null;
+  for(let tries=1; tries<=MAX_TRIES; tries++){
+    const lay = randomLayout();
+    const sol = solveBFS(lay, pal.heroes, pal.reqRobots, pal.reqRobots===2 ? 350000 : 800000);
+
+    if(sol.length){
+      if(!best || closer(sol.length, best.len, lo, hi))
+        best = {len:sol.length, start:lay, sol:sol.path};
+
+      if(sol.length>=lo && sol.length<=hi){
+        statusEl.textContent = `Solution ${sol.length} steps.`;
+        return {start:lay, minLen:sol.length, solution:sol.path, palette:pal};
+      }
+    }
+    if(tries%200===0) statusEl.textContent = `Searching… (${tries}/${MAX_TRIES})`;
+  }
+
+  if(best){
+    statusEl.textContent = `Path: ${best.len} moves.`;
+    return {start:best.start, minLen:best.len, solution:best.sol, palette:pal};
+  }
+  statusEl.textContent = "Unable to find solution.";
+  return null;
+
+  function closer(a, b, lo, hi){
+    if(b==null) return true;
+    const aIn = a>=lo && a<=hi, bIn = b>=lo && b<=hi;
+    if(aIn && !bIn) return true;
+    if(!aIn && bIn) return false;
+    if(aIn && bIn) return Math.abs(a-(lo+hi)/2) < Math.abs(b-(lo+hi)/2);
+    const aOver = a>hi, bOver = b>hi;
+    if(aOver!==bOver) return !aOver;
+    const aDist = aOver ? a-hi : lo-a;
+    const bDist = bOver ? b-hi : lo-b;
+    return aDist < bDist;
+  }
+}
+
+function render(){
+  Array.from(boardEl.children).forEach(cell=>cell.innerHTML='');
+
+  if(state.pos){
+    for(let i=0;i<TOTAL;i++){
+      const at = state.pos[i];
+      if(at===SENTINEL) continue;
+      const cell = boardEl.children[at];
+      const div = document.createElement('div');
+      div.className = `robot ${state.colors[i]} ${i===state.selected?'selected':''}`;
+      div.textContent = state.heroLabels[i] || '';
+  div.dataset.idx = i;
+      cell.appendChild(div);
+      div.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        state.selected=i;
+        render();
+      });
+    }
+  }
+
+  moveCountEl.textContent = String(state.moves||0);
+  btnSolve.disabled = !state.solution || !state.solution.length;
+
+  if(isSolved()){
+    statusEl.textContent = state.reqRobots===2 ? `Both robots safe — you win! 🎉` : `Solved! 🎉`;
+  } else if(state.reqRobots===2){
+    const left = state.reqRobots - state.cleared;
+    if(state.minLen) statusEl.textContent = `Two robots to center in ${state.minLen} moves`;
+    else if(left===2) statusEl.textContent = `Two robots to center`;
+    else if(left===1) statusEl.textContent = `One more robot to center`;
+  } else {
+    if(state.minLen) statusEl.textContent = `Red robot to center in ${state.minLen} moves`;
+    else statusEl.textContent = "";
+  }
+}
+
+function tryMove(dir){
+  if(!state.pos || isSolved() || state.locked) return;
+
+  const from = state.pos[state.selected];
+  const to = slide(state.pos, state.selected, dir);
+  if(to===from || to===SENTINEL) return;
+
+  const np = clone(state.pos);
+  np[state.selected] = to;
+
+  const isHero = state.heroes.includes(state.selected);
+  const reachedCenter = (to === CENTER) && isHero;
+
+  if(reachedCenter){
+    state.pos = np;
+    state.moves++;
+    solutionBox.hidden = true;
+    render();
+
+    const cell = boardEl.children[CENTER];
+    const robDiv = cell && cell.querySelector('.robot');
+
+    state.locked = true;
+    boardEl.style.pointerEvents = 'none';
+
+    const finalizeRemoval = () => {
+      if(state.pos[state.selected] !== SENTINEL){
+        state.pos[state.selected] = SENTINEL;
+        state.cleared++;
+        const next = state.pos.findIndex(p => p !== SENTINEL);
+        state.selected = next >= 0 ? next : -1;
+      }
+      state.locked = false;
+      boardEl.style.pointerEvents = '';
+      render();
+    };
+
+    if(robDiv){
+      robDiv.style.transform = 'none';
+      robDiv.classList.remove('dragging');
+      
+      setTimeout(() => {
+        robDiv.classList.add('fadeOut');
+        
+        const onEnd = () => {
+          robDiv.removeEventListener('animationend', onEnd);
+          finalizeRemoval();
+        };
+        robDiv.addEventListener('animationend', onEnd, {once:true});
+        setTimeout(()=>{ if(state.locked) finalizeRemoval(); }, 2500);
+      }, 50);
+    } else {
+      finalizeRemoval();
+    }
+    return;
+  }
+
+  const ap = applyGoalRule(np, state.heroes, state.cleared, state.reqRobots, state.selected);
+  state.pos = ap.pos;
+  state.cleared = ap.cleared;
+
+  if(state.pos[state.selected]===SENTINEL){
+    for(let i=0;i<TOTAL;i++){ if(state.pos[i]!==SENTINEL){ state.selected=i; break; } }
+  }
+
+  state.moves++;
+  solutionBox.hidden = true;
+  render();
+}
+
+function dirArrow(d){ return d==='left'?'←': d==='right'?'→': d==='up'?'↑':'↓'; }
+function dirWordFi(d){ return d==='left'?'left': d==='right'?'right': d==='up'?'up':'down'; }
+
+function buildSolutionList(){
+  if(!state.solution || !state.solution.length){ solutionBox.hidden=true; return; }
+  solutionList.innerHTML='';
+  state.solution.forEach((step)=>{
+    const li = document.createElement('li');
+    const r = step.robot;
+    const d = step.dir;
+    const wrap = document.createElement('span');
+    wrap.className='step';
+    const pill = document.createElement('span');
+    pill.className = `pill ${state.colors[r]}`;
+    pill.textContent = (state.names[r]||'?')[0];
+    const arrow = document.createElement('span');
+    arrow.className='arrow';
+    arrow.textContent = dirArrow(d);
+    const label = document.createElement('span');
+    label.textContent = `${state.names[r]} ${dirWordFi(d)}`;
+    wrap.appendChild(pill);
+    wrap.appendChild(arrow);
+    wrap.appendChild(label);
+    li.appendChild(wrap);
+    solutionList.appendChild(li);
+  });
+  solutionBox.hidden=false;
+}
+
+// Swipe & Mouse detection
+let touchStart = {x:0, y:0};
+let isMouseDown = false;
+
+document.addEventListener('touchstart', (e)=>{
+  touchStart = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+}, {passive:true});
+
+document.addEventListener('touchend', (e)=>{
+  if(!state.pos) return;
+  const dx = e.changedTouches[0].clientX - touchStart.x;
+  const dy = e.changedTouches[0].clientY - touchStart.y;
+  const threshold = 40;
+
+  if(Math.abs(dx) > threshold || Math.abs(dy) > threshold){
+    if(Math.abs(dx) > Math.abs(dy)){
+      tryMove(dx > 0 ? 'right' : 'left');
+    } else {
+      tryMove(dy > 0 ? 'down' : 'up');
+    }
+  }
+}, {passive:true});
+
+boardEl.addEventListener('mousedown', (e)=>{
+  if(!state.pos || state.locked) return;
+  const robEl = e.target.closest('.robot');
+  if(!robEl) return;
+
+  isMouseDown = true;
+  touchStart = {x:e.clientX, y:e.clientY};
+
+  // select robot immediately under pointer WITHOUT full render()
+  const idx = Number(robEl.dataset.idx);
+  if(!Number.isNaN(idx) && idx !== state.selected){
+    // remove old highlight
+    const prevAt = state.pos[state.selected];
+    if(prevAt !== undefined && prevAt !== SENTINEL){
+      const prevEl = boardEl.children[prevAt]?.querySelector('.robot');
+      if(prevEl) prevEl.classList.remove('selected');
+    }
+    state.selected = idx;
+    robEl.classList.add('selected');
+  }
+
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv){
+    robDiv.classList.add('dragging');
+    try{ robDiv.setPointerCapture && e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId); }catch(_){}
+  }
+});
+document.addEventListener('mousemove', (e)=>{
+  if(!isMouseDown || !state.pos) return;
+  const at = state.pos[state.selected];
+  if(at === SENTINEL) return;
+  
+  const cell = boardEl.children[at];
+  const rect = cell.getBoundingClientRect();
+  const robDiv = cell.querySelector('.robot');
+  if(!robDiv) return;
+  
+  const dx = e.clientX - touchStart.x;
+  const dy = e.clientY - touchStart.y;
+  
+  robDiv.style.transform = `translate(${dx}px, ${dy}px) scale(1.1)`;
+});
+
+boardEl.addEventListener('mouseup', (e)=>{
+  if(!isMouseDown || !state.pos) return;
+  isMouseDown = false;
+  
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv) {
+    robDiv.classList.remove('dragging');
+    robDiv.style.transform = '';
+  }
+  
+  const dx = e.clientX - touchStart.x;
+  const dy = e.clientY - touchStart.y;
+  const threshold = 30;
+
+  if(Math.abs(dx) > threshold || Math.abs(dy) > threshold){
+    if(Math.abs(dx) > Math.abs(dy)){
+      tryMove(dx > 0 ? 'right' : 'left');
+    } else {
+      tryMove(dy > 0 ? 'down' : 'up');
+    }
+  }
+});
+
+// --- Touch drag support (iPad/iPhone) ---
+let isTouchDragging = false;
+
+boardEl.addEventListener('touchstart', (e)=>{
+  if(!state.pos || state.locked) return;
+  const robEl = e.target.closest('.robot');
+  if(!robEl) return;
+  const t = e.touches[0];
+  touchStart = {x:t.clientX, y:t.clientY};
+
+  // select robot immediately WITHOUT full render()
+  const idx = Number(robEl.dataset.idx);
+  if(!Number.isNaN(idx) && idx !== state.selected){
+    const prevAt = state.pos[state.selected];
+    if(prevAt !== undefined && prevAt !== SENTINEL){
+      const prevEl = boardEl.children[prevAt]?.querySelector('.robot');
+      if(prevEl) prevEl.classList.remove('selected');
+    }
+    state.selected = idx;
+    robEl.classList.add('selected');
+  }
+ 
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv){
+    isTouchDragging = true;
+    robDiv.classList.add('dragging');
+  }
+  // prevent page scroll during drag
+  e.preventDefault();
+}, {passive:false});
+
+document.addEventListener('touchmove', (e)=>{
+  if(!isTouchDragging || !state.pos) return;
+  const t = e.touches[0];
+  const at = state.pos[state.selected];
+  if(at === SENTINEL) return;
+  const cell = boardEl.children[at];
+  const robDiv = cell && cell.querySelector('.robot');
+  if(!robDiv) return;
+
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  robDiv.style.transform = `translate(${dx}px, ${dy}px) scale(1.1)`;
+  e.preventDefault();
+}, {passive:false});
+
+boardEl.addEventListener('touchend', (e)=>{
+  if(!isTouchDragging || !state.pos) return;
+  isTouchDragging = false;
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv){
+    robDiv.classList.remove('dragging');
+    robDiv.style.transform = '';
+  }
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const threshold = 30;
+  if(Math.abs(dx) > threshold || Math.abs(dy) > threshold){
+    if(Math.abs(dx) > Math.abs(dy)){
+      tryMove(dx > 0 ? 'right' : 'left');
+    } else {
+      tryMove(dy > 0 ? 'down' : 'up');
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+
+// Button clicks
+document.querySelectorAll('.dir').forEach(btn=>{
+  btn.addEventListener('click', ()=> tryMove(btn.dataset.dir));
+});
+
+btnNew.addEventListener('click', async ()=>{
+  btnNew.disabled = true;
+  btnSolve.disabled = true;
+  solutionBox.hidden = true;
+
+  state = {
+    start:null, pos:null, selected:0, moves:0, solution:null, minLen:null,
+    colors:[], names:[], heroLabels:{}, heroes:[0], reqRobots:1, cleared:0, locked:false
+  };
+  render();
+
+  const res = await generatePuzzleFor(selDiff.value);
+  if(res){
+    state.start = clone(res.start);
+    state.pos = clone(res.start);
+    state.selected = 0;
+    state.moves = 0;
+    state.solution = res.solution;
+    state.minLen = res.minLen;
+    state.colors = res.palette.colors.slice();
+    state.names = res.palette.names.slice();
+    state.heroLabels = {...res.palette.heroLabels};
+    state.heroes = res.palette.heroes.slice();
+    state.reqRobots = res.palette.reqRobots;
+    state.cleared = 0;
+    render();
+  } else {
+    statusEl.textContent = "Unable to create puzzle.";
+  }
+  btnNew.disabled = false;
+  btnSolve.disabled = !state.solution;
+});
+
+btnSolve.addEventListener('click', ()=> buildSolutionList());
+
+[btnReset, btnResetBtn2].forEach(btn => {
+  btn.addEventListener('click', ()=>{
+    if(!state.start) return;
+    state.pos = clone(state.start);
+    state.selected = 0;
+    state.moves = 0;
+    state.cleared = 0;
+    state.locked = false;
+    solutionBox.hidden = true;
+    render();
+  });
+});
+
+// Build board
+for(let i=0;i<25;i++){
+  const cell = document.createElement('div');
+  cell.className='cell';
+  if(i===CENTER) cell.classList.add('goalCell');
+  boardEl.appendChild(cell);
+}
+
+render();
+  </script>
+</body>
+</html>

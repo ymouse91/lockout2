@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lockout</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Lockout</h1>
+    <div class="controls">
+      <label>
+        <select id="difficulty">
+          <!-- 1-robotti vaihtoehdot -->
+          <option value="beginner">Easy (3–5)</option>
+          <option value="intermediate">Medium (6–8)</option>
+          <option value="advanced">Hard (9–12)</option>
+          <!-- 2-robottia: punainen + oranssi -->
+          <option value="beginner2">Easy ×2 Robots (3–6)</option>
+          <option value="intermediate2">Medium ×2 Robots (7–9)</option>
+          <option value="advanced2">Hard ×2 Robots (10–13)</option>
+        </select>
+      </label>
+      <button id="showSolution">Solution</button>
+      <button id="newPuzzle">New Task</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="hud">
+      <div>Moves: <span id="moveCount">0</span></div>
+      <div style="display:none">Lyhin: <span id="minMoves">–</span></div>
+      <div id="status"></div>
+    </div>
+
+    <div class="board" id="board" tabindex="0" aria-label="Pelilauta 5x5"></div>
+
+    <!-- D-pad -->
+    <section class="moveArea">
+      <div class="dpad">
+        <button class="dir up" data-dir="up" aria-label="Ylös">↑</button>
+        <button class="dir left" data-dir="left" aria-label="Vasemmalle">←</button>
+        <button id="reset" class="resetBtn" aria-label="Aloita alusta">RESET</button>
+        <button class="dir right" data-dir="right" aria-label="Oikealle">→</button>
+        <button class="dir down" data-dir="down" aria-label="Alas">↓</button>
+      </div>
+    </section>
+
+    <!-- Ratkaisulista -->
+    <section class="solutionBox" id="solutionBox" hidden>
+      <div class="solutionTitle">Shortest solution</div>
+      <ol id="solutionList" class="solutionList"></ol>
+    </section>
+  </main>
+
+  <footer>
+    <small>v.2.0 © JR - Original idea Hiroshi Yamamoto</small>
+  </footer>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
