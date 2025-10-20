@@ -3,7 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lockout</title>
+  <title>Lockout2</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+    <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+    }
+  </script>
   <style>
 :root{
   --bg:#0b1220;
@@ -53,7 +62,7 @@ main{max-width:900px;margin:16px auto;padding:0 16px;padding-bottom:calc(env(saf
 .hud{display:flex;gap:20px;justify-content:center;align-items:center;margin:8px 0;color:var(--muted)}
 #status{color:var(--accent);min-height:1.5rem}
 
-.board{
+.board{ touch-action: none; 
   width:min(80vmin,560px);
   aspect-ratio:1/1;
   margin:16px auto;
@@ -145,26 +154,42 @@ footer{display:flex;justify-content:center;margin:20px 0;color:var(--muted);font
   will-change: transform, opacity;
 }
 
-.dpad, #dpad {
-  display: none !important;
-}
 
-footer, .footer, #footer {
+  
+/* --- Overrides: hide D-pad and pin footer --- */
+.dpad{ display:none !important; }
+
+footer{
   position: fixed;
-  right: 12px;
-  bottom: 12px;
+  right: calc(env(safe-area-inset-right) + 12px);
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
   margin: 0;
   z-index: 1000;
 }
 
-@media (max-width:768px){
-  h1{display:none}
+/* iPhone/iOS -tunnistus */
+@supports (-webkit-touch-callout: none) {
+  /* Molemmat rivit keskelle */
+  .hud { display: flex; flex-direction: column; align-items: center; }
+  .hud .moves { text-align: center; width: 100%; }
+
+  /* Varaa tila statukselle, ettei ruudukko hypi kun teksti vaihtuu */
+  #status {
+    display: block;
+    min-height: 1.6em;   /* varaa korkeuden yhdelle riville */
+    margin-top: 4px;
+    text-align: center;
+  }
+
+  /* Piilota footer kokonaan iPhonella */
+  footer { display: none !important; }
 }
-  </style>
+
+</style>
 </head>
 <body>
   <header class="topbar">
-    <h1>Lockout</h1>
+    <h1>Lockout2</h1>
     <div class="controls">
       <label>
         <select id="difficulty">
@@ -207,7 +232,7 @@ footer, .footer, #footer {
   </main>
 
   <footer>
-    <small>v.2.0 © JR - Original idea Hiroshi Yamamoto</small>
+    <small>v.3.0 © JR - Original idea Hiroshi Yamamoto</small>
   </footer>
 
   <script>
@@ -574,11 +599,17 @@ boardEl.addEventListener('mousedown', (e)=>{
   isMouseDown = true;
   touchStart = {x:e.clientX, y:e.clientY};
 
-  // select robot immediately under pointer
+  // select robot immediately under pointer WITHOUT full render()
   const idx = Number(robEl.dataset.idx);
   if(!Number.isNaN(idx) && idx !== state.selected){
+    // remove old highlight
+    const prevAt = state.pos[state.selected];
+    if(prevAt !== undefined && prevAt !== SENTINEL){
+      const prevEl = boardEl.children[prevAt]?.querySelector('.robot');
+      if(prevEl) prevEl.classList.remove('selected');
+    }
     state.selected = idx;
-    render();
+    robEl.classList.add('selected');
   }
 
   const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
@@ -625,6 +656,74 @@ boardEl.addEventListener('mouseup', (e)=>{
     }
   }
 });
+
+// --- Touch drag support (iPad/iPhone) ---
+let isTouchDragging = false;
+
+boardEl.addEventListener('touchstart', (e)=>{
+  if(!state.pos || state.locked) return;
+  const robEl = e.target.closest('.robot');
+  if(!robEl) return;
+  const t = e.touches[0];
+  touchStart = {x:t.clientX, y:t.clientY};
+
+  // select robot immediately WITHOUT full render()
+  const idx = Number(robEl.dataset.idx);
+  if(!Number.isNaN(idx) && idx !== state.selected){
+    const prevAt = state.pos[state.selected];
+    if(prevAt !== undefined && prevAt !== SENTINEL){
+      const prevEl = boardEl.children[prevAt]?.querySelector('.robot');
+      if(prevEl) prevEl.classList.remove('selected');
+    }
+    state.selected = idx;
+    robEl.classList.add('selected');
+  }
+ 
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv){
+    isTouchDragging = true;
+    robDiv.classList.add('dragging');
+  }
+  // prevent page scroll during drag
+  e.preventDefault();
+}, {passive:false});
+
+document.addEventListener('touchmove', (e)=>{
+  if(!isTouchDragging || !state.pos) return;
+  const t = e.touches[0];
+  const at = state.pos[state.selected];
+  if(at === SENTINEL) return;
+  const cell = boardEl.children[at];
+  const robDiv = cell && cell.querySelector('.robot');
+  if(!robDiv) return;
+
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  robDiv.style.transform = `translate(${dx}px, ${dy}px) scale(1.1)`;
+  e.preventDefault();
+}, {passive:false});
+
+boardEl.addEventListener('touchend', (e)=>{
+  if(!isTouchDragging || !state.pos) return;
+  isTouchDragging = false;
+  const robDiv = boardEl.children[state.pos[state.selected]]?.querySelector('.robot');
+  if(robDiv){
+    robDiv.classList.remove('dragging');
+    robDiv.style.transform = '';
+  }
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const threshold = 30;
+  if(Math.abs(dx) > threshold || Math.abs(dy) > threshold){
+    if(Math.abs(dx) > Math.abs(dy)){
+      tryMove(dx > 0 ? 'right' : 'left');
+    } else {
+      tryMove(dy > 0 ? 'down' : 'up');
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
 
 // Button clicks
 document.querySelectorAll('.dir').forEach(btn=>{

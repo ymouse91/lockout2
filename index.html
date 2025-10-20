@@ -6,8 +6,8 @@
   <title>Lockout2</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111827">
-  <link rel="icon" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
     <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
@@ -25,10 +25,10 @@
   --grid:#415064;
   --red:#ef4444;
   --green:#22c55e;
-  --yellow:#f59e0b;
+  --yellow:#ffee0b;
   --blue:#3b82f6;
   --purple:#a855f7;
-  --orange:#fb923c;
+  --orange:#f59e0b;
 }
 
 *{box-sizing:border-box}
@@ -87,7 +87,7 @@ main{max-width:900px;margin:16px auto;padding:0 16px;padding-bottom:calc(env(saf
   display:flex;align-items:center;justify-content:center;
   font-weight:700;letter-spacing:.5px;
   text-shadow:0 1px 2px rgba(0,0,0,.4);
-  border:2px solid rgba(255,255,255,.25);
+  border:4px solid rgba(255,255,255,.6);
   cursor:pointer;
   transition:none;
 }
@@ -155,7 +155,6 @@ footer{display:flex;justify-content:center;margin:20px 0;color:var(--muted);font
 }
 
 
-  
 /* --- Overrides: hide D-pad and pin footer --- */
 .dpad{ display:none !important; }
 
@@ -169,23 +168,17 @@ footer{
 
 /* iPhone/iOS -tunnistus */
 @supports (-webkit-touch-callout: none) {
-  /* Molemmat rivit keskelle */
   .hud { display: flex; flex-direction: column; align-items: center; }
   .hud .moves { text-align: center; width: 100%; }
-
-  /* Varaa tila statukselle, ettei ruudukko hypi kun teksti vaihtuu */
   #status {
     display: block;
-    min-height: 1.6em;   /* varaa korkeuden yhdelle riville */
+    min-height: 1.6em;
     margin-top: 4px;
     text-align: center;
   }
-
-  /* Piilota footer kokonaan iPhonella */
   footer { display: none !important; }
 }
-
-</style>
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -209,7 +202,7 @@ footer{
 
   <main>
     <div class="hud">
-      <div>Moves: <span id="moveCount">0</span></div>
+      <div class="moves">Moves: <span id="moveCount">0</span></div>
       <div id="status"></div>
     </div>
 
@@ -247,7 +240,9 @@ const selDiff = document.getElementById('difficulty');
 const solutionBox = document.getElementById('solutionBox');
 const solutionList = document.getElementById('solutionList');
 
-const N = 5, CENTER = 12, TOTAL = 5, SENTINEL = 255;
+
+/* Poistettu kiinteä TOTAL */
+const N = 5, CENTER = 12, SENTINEL = 255;
 const STEP = { up:[-1,0], down:[1,0], left:[0,-1], right:[0,1] };
 const DIFF = {
   beginner:[3,5], intermediate:[6,8], advanced:[9,12],
@@ -259,16 +254,17 @@ function rc(i){ return [Math.floor(i/N), i%N]; }
 function clone(a){ return new Uint8Array(a); }
 function isSolved(){ return state.cleared >= state.reqRobots; }
 
+/* Paletti: nimet vastaavat värejä; orange==yellow */
 function paletteFor(value){
   const two = value.endsWith('2');
   if(two) return {
-    colors:['red','orange','green','blue','purple'],
-    names:['Red','Orange','Green','Blue','Purple'],
+    colors:['red','orange','green','blue','purple','yellow'],
+    names:['Red','Orange','Green','Blue','Purple', 'Yellow'],  // Orange näyttää Yellowlta
     heroes:[0,1], heroLabels:{0:'X',1:'O'}, reqRobots:2
   };
   return {
-    colors:['red','yellow','blue','green','purple'],
-    names:['Red','Orange','Blue','Green','Purple'],
+    colors:['red','yellow','blue','green','purple', 'orange'],
+    names:['Red','Yellow','Blue','Green','Purple', 'Orange'],
     heroes:[0], heroLabels:{0:'X'}, reqRobots:1
   };
 }
@@ -307,13 +303,15 @@ function slide(pos, robotIdx, dir){
   return idx(br - dr, bc - dc);
 }
 
+/* Kanonisointi: 1 sankari -> hero erillään; 2 sankaria -> rest slice(2) */
 function canonicalKey(pos, heroes, cleared){
   if (heroes.length === 1){
-    const a = Array.from(pos).slice().sort((x,y)=>x-y);
-    return a.join(',') + '|' + cleared;
+    const h0 = pos[0];
+    const rest = Array.from(pos.slice(1)).sort((a,b)=>a-b);
+    return `${h0}|${rest.join(',')}|${cleared}`;
   }
   const h0 = pos[0], h1 = pos[1];
-  const rest = [pos[2],pos[3],pos[4]].sort((a,b)=>a-b);
+  const rest = Array.from(pos.slice(2)).sort((a,b)=>a-b);
   return `${h0}|${h1}|${rest.join(',')}|${cleared}`;
 }
 
@@ -374,38 +372,58 @@ function solveBFS(startPos, heroes, reqRobots, maxNodes=800000){
   return {length:null, path:null};
 }
 
-function randomLayout(){
+/* Satunnaisstartti dynaamiselle robottimäärälle */
+function randomLayout(total){
   const all = [];
   for(let i=0;i<N*N;i++) if(i!==CENTER) all.push(i);
   for(let i=all.length-1;i>0;i--){
     const j=(Math.random()*(i+1))|0;
     [all[i],all[j]]=[all[j],all[i]];
   }
-  const p = new Uint8Array(TOTAL);
-  for(let i=0;i<TOTAL;i++) p[i]=all[i];
+  const p = new Uint8Array(total);
+  for(let i=0;i<total;i++) p[i]=all[i];
   return p;
 }
 
 async function generatePuzzleFor(value){
-  const pal = paletteFor(value);
+  // Sankarit: “…2” = kaksi sankaria
+  const palBase = paletteFor(value);
+  const heroesCount = palBase.heroes.length;
+
+  // Apurobotit:
+  // 1 sankari → 1 + (4 TAI 5)
+  // 2 sankaria → 2 + (3 TAI 4)
+  const helpers = (heroesCount === 2)
+    ? (Math.random() < 0.5 ? 3 : 4)
+    : (Math.random() < 0.5 ? 4 : 5);
+
+  const TOTAL = heroesCount + helpers; // 5 TAI 6
+
   let [lo, hi] = DIFF[value] || DIFF.beginner;
-  if (pal.reqRobots===2 && hi>13) hi = 13;
+  if (palBase.reqRobots===2 && hi>13) hi = 13;
 
   statusEl.textContent = "Generating…";
   const MAX_TRIES = 15000;
 
   let best = null;
   for(let tries=1; tries<=MAX_TRIES; tries++){
-    const lay = randomLayout();
-    const sol = solveBFS(lay, pal.heroes, pal.reqRobots, pal.reqRobots===2 ? 350000 : 800000);
+    const lay = randomLayout(TOTAL);
+    const sol = solveBFS(lay, palBase.heroes, palBase.reqRobots,
+                         palBase.reqRobots===2 ? 350000 : 800000);
 
-    if(sol.length){
+    if(sol.length!=null){
       if(!best || closer(sol.length, best.len, lo, hi))
         best = {len:sol.length, start:lay, sol:sol.path};
 
       if(sol.length>=lo && sol.length<=hi){
         statusEl.textContent = `Solution ${sol.length} steps.`;
-        return {start:lay, minLen:sol.length, solution:sol.path, palette:pal};
+        const colors = paletteFor(value).colors.slice(0, TOTAL);
+        const names  = paletteFor(value).names.slice(0, TOTAL);
+        return {
+          start:lay, minLen:sol.length, solution:sol.path,
+          palette:{ colors, names, heroes:palBase.heroes,
+                    heroLabels:palBase.heroLabels, reqRobots:palBase.reqRobots }
+        };
       }
     }
     if(tries%200===0) statusEl.textContent = `Searching… (${tries}/${MAX_TRIES})`;
@@ -413,7 +431,13 @@ async function generatePuzzleFor(value){
 
   if(best){
     statusEl.textContent = `Path: ${best.len} moves.`;
-    return {start:best.start, minLen:best.len, solution:best.sol, palette:pal};
+    const colors = paletteFor(value).colors.slice(0, TOTAL);
+    const names  = paletteFor(value).names.slice(0, TOTAL);
+    return {
+      start:best.start, minLen:best.len, solution:best.sol,
+      palette:{ colors, names, heroes:palBase.heroes,
+                heroLabels:palBase.heroLabels, reqRobots:palBase.reqRobots }
+    };
   }
   statusEl.textContent = "Unable to find solution.";
   return null;
@@ -436,14 +460,14 @@ function render(){
   Array.from(boardEl.children).forEach(cell=>cell.innerHTML='');
 
   if(state.pos){
-    for(let i=0;i<TOTAL;i++){
+    for(let i=0;i<state.pos.length;i++){
       const at = state.pos[i];
       if(at===SENTINEL) continue;
       const cell = boardEl.children[at];
       const div = document.createElement('div');
       div.className = `robot ${state.colors[i]} ${i===state.selected?'selected':''}`;
       div.textContent = state.heroLabels[i] || '';
-  div.dataset.idx = i;
+      div.dataset.idx = i;
       cell.appendChild(div);
       div.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -531,7 +555,7 @@ function tryMove(dir){
   state.cleared = ap.cleared;
 
   if(state.pos[state.selected]===SENTINEL){
-    for(let i=0;i<TOTAL;i++){ if(state.pos[i]!==SENTINEL){ state.selected=i; break; } }
+    for(let i=0;i<state.pos.length;i++){ if(state.pos[i]!==SENTINEL){ state.selected=i; break; } }
   }
 
   state.moves++;
@@ -599,10 +623,9 @@ boardEl.addEventListener('mousedown', (e)=>{
   isMouseDown = true;
   touchStart = {x:e.clientX, y:e.clientY};
 
-  // select robot immediately under pointer WITHOUT full render()
+  // select robot immediately
   const idx = Number(robEl.dataset.idx);
   if(!Number.isNaN(idx) && idx !== state.selected){
-    // remove old highlight
     const prevAt = state.pos[state.selected];
     if(prevAt !== undefined && prevAt !== SENTINEL){
       const prevEl = boardEl.children[prevAt]?.querySelector('.robot');
@@ -667,7 +690,7 @@ boardEl.addEventListener('touchstart', (e)=>{
   const t = e.touches[0];
   touchStart = {x:t.clientX, y:t.clientY};
 
-  // select robot immediately WITHOUT full render()
+  // select robot immediately
   const idx = Number(robEl.dataset.idx);
   if(!Number.isNaN(idx) && idx !== state.selected){
     const prevAt = state.pos[state.selected];
@@ -684,7 +707,6 @@ boardEl.addEventListener('touchstart', (e)=>{
     isTouchDragging = true;
     robDiv.classList.add('dragging');
   }
-  // prevent page scroll during drag
   e.preventDefault();
 }, {passive:false});
 
