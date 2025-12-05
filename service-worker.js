@@ -1,4 +1,4 @@
-const CACHE = 'lockout2-v3';
+const CACHE = 'lockout2-v4';
 const ASSETS = [
   './',
   './index.html',
