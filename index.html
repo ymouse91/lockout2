@@ -785,6 +785,10 @@ btnNew.addEventListener('click', async ()=>{
   btnSolve.disabled = !state.solution;
 });
 
+selDiff.addEventListener('change', () => {
+  btnNew.click();   // Käynnistää uuden pulman arvonnan automaattisesti
+});
+
 btnSolve.addEventListener('click', ()=> buildSolutionList());
 
 [btnReset, btnResetBtn2].forEach(btn => {
@@ -809,6 +813,8 @@ for(let i=0;i<25;i++){
 }
 
 render();
+btnNew.click();   // Arpoo uuden Easy-pulman automaattisesti pelin alussa
+
   </script>
 </body>
 </html>
